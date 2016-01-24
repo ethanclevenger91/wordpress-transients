@@ -1,0 +1,23 @@
+{
+  "name": "transients-talk",
+  "description": "Presentation on WordPress transients",
+  "main": "",
+  "moduleType": [],
+  "authors": [
+    "Ethan Clevenger <ethan.c.clevenger@gmail.com>"
+  ],
+  "license": "MIT",
+  "homepage": "",
+  "private": true,
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "reveal.js": "~3.2.0",
+    "font-awesome": "fontawesome#~4.5.0"
+  }
+}

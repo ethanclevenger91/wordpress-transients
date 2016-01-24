@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+
+	<head>
+		<meta charset="utf-8">
+
+		<title>WordPress Transients</title>
+
+		<meta name="description" content="A presentation on how to effectively use WordPress transients">
+		<meta name="author" content="Ethan Clevenger">
+
+		<meta name="apple-mobile-web-app-capable" content="yes">
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
+
+		<link rel="stylesheet" href="bower_components/reveal.js/css/reveal.css">
+		<link rel="stylesheet" href="bower_components/reveal.js/css/theme/moon.css" id="theme">
+
+		<!-- Code syntax highlighting -->
+		<link rel="stylesheet" href="bower_components/reveal.js/lib/css/zenburn.css">
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="bower_components/font-awesome/css/font-awesome.min.css">
+
+		<!-- Printing and PDF exports -->
+		<!-- <script>
+			var link = document.createElement( 'link' );
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+			document.getElementsByTagName( 'head' )[0].appendChild( link );
+		</script> -->
+
+		<!--[if lt IE 9]>
+		<script src="lib/js/html5shiv.js"></script>
+		<![endif]-->
+	</head>
+
+	<body>
+
+		<div class="reveal">
+
+			<!-- Any section element inside of this container is displayed as a slide -->
+			<div class="slides">
+				<section>
+					<h1>WordPress Transients</h1>
+					<h3>this ⊆ WordPress Performance</h3>
+					<p>
+						<small>
+              Created by <a href="http://ethanclevenger91.github.io">Ethan Clevenger</a><br>
+              <a style="vertical-align:middle;margin-top:13px;display:inline-block" href="http://twitter.com/ethanclevenger"><i class="fa-2x fa fa-twitter" style="vertical-align:middle"></i>&nbsp;&nbsp;@ethanclevenger</a><br>
+              <a style="vertical-align:middle;margin-top:13px;display:inline-block" href="http://github.com/ethanclevenger91"><i class="fa-2x fa fa-github" style="vertical-align:middle"></i>&nbsp;&nbsp;ethanclevenger91</a>
+            </small>
+					</p>
+				</section>
+
+				<section>
+					<h2>This is a tech talk</h2>
+          <aside class="notes">
+						It assumes you've developing themes or plugins. You know PHP, you know WordPress. If you're just a blogger, it won't mean a ton to you.
+					</aside>
+					<img src="http://cathyreisenwitz.com/wp-content/uploads/2016/01/no.jpg">
+				</section>
+
+				<section>
+					<section>
+						<h1>What Transients?</h1>
+					</section>
+					<section>
+						<h2><a href="https://codex.wordpress.org/Transients_API">The Codex:</a></h2>
+						<blockquote>
+              [The WordPress Transients API] offers a simple and standardized way of storing cached data in the database temporarily by giving it a custom name and a timeframe after which it will expire and be deleted.
+            </blockquote>
+					</section>
+				</section>
+
+				<section>
+          <section>
+					  <h1>Why Transients?</h1>
+					</section>
+          <section>
+            <h2>Performance</h2>
+            <p>Slow site = high bounce rate</p>
+            <p>Fast site = fun site!</p>
+            <img src="https://media.giphy.com/media/QIQTfximd3AuQ/giphy.gif">
+          </section>
+          <section>
+            <h2>Big O - n<sup>x</sup></h2>
+            <pre><code data-trim>
+foreach($foo as $b => $bar) {
+  foreach($bar as $f => $fizz) {
+    foreach($fizz as $z => $buzz){
+      ...
+    }
+  }
+}
+            </code></pre>
+  				</section>
+          <section>
+            <h2>APIs</h2>
+            <pre><code data-trim>$this->fetchUrl("https://graph.facebook.com/{$id}/posts?access_token={$tkn}");</code></pre>
+          </section>
+          <section>
+            <h2>Nasty SQL</h2>
+<pre><code data-trim>
+SELECT AUI.idea_id, AUI.title, AUI.events,
+  GROUP_CONCAT(IC.category_name SEPARATOR ';') as categories
+  FROM (
+  	SELECT UI.idea_id, UI.title, GROUP_CONCAT(IE.events SEPARATOR ';') as events ,
+  	       CONCAT(';',UI.idea_categories,';') as temp_categories
+   	FROM user_idea UI
+  	LEFT JOIN idea_events IE ON UI.idea_id = IE.idea_id
+  	GROUP BY UI.idea_id
+  ) AS AUI
+  INNER JOIN idea_categories IC
+  ON AUI.temp_categories LIKE CONCAT('%;',IC.category_id,';%')
+  GROUP BY AUI.idea_id;
+</code></pre>
+          </section>
+        </section>
+        <section>
+  				<section>
+  					<h1>When Transients?</h2>
+  				</section>
+          <section>
+            <h2>Generally</h2>
+            <ul>
+              <li>You know when data will expire</li>
+              <li>You know the event that will cause data to expire</li>
+            </ul>
+          </section>
+          <section>
+            <h2>But Also</h2>
+            <p>Any time a little outdated information isn't a big deal</p>
+          </section>
+        </section>
+  			<section>
+  				<h1>How Transients?</h1>
+        </section>
+        <section>
+          <section>
+            <h1>A Simple, Local Example</h1>
+          </section>
+          <section>
+            <h2>Before</h2>
+<pre><code data-trim>
+$mPosts = new WP_Query(['post_type'=>'post', 'posts_per_page'=>-1]);
+if($mPposts->have_posts()): while($mPosts->have_posts()): $mPosts->the_post();
+  echo '<div class="post">';
+  echo '<h2>'.get_the_title().'</h2>';
+  the_content();
+  echo '</div>';
+endwhile; endif;
+</code></pre>
+          </section>
+          <section>
+            <h2>After</h2>
+<pre><code data-trim>
+$mPosts = get_transient('my_posts');
+if($mPosts === false) {
+  $mPosts = new WP_Query(['post_type'=>'post', 'posts_per_page'=>-1]);
+  set_transient('my_posts', $mPosts, DAY_IN_SECONDS);
+}
+if($mPosts->have_posts()): while($mPosts->have_posts()): $mPosts->the_post();
+  echo '<div class="post">';
+  echo '<h2>'.get_the_title().'</h2>';
+  the_content();
+  echo '</div>';
+endwhile; endif;
+</code></pre>
+          </section>
+          <section>
+            <h2>Still needs some work</h2>
+            <aside class="notes">
+              A few things still suck here. This code could be cleaner, for one. Also, what happens if I make a time-sensitive post before the transient expires?
+            </aside>
+            <ul>
+              <li>Abstract that shit</li>
+              <li>What if I post?</li>
+            </ul>
+          </section>
+          <section>
+            <aside class="notes">
+              Let's address the first issue first and abstract this a little, since it'll make the second part a bit easier
+            </aside>
+            <h2>Good</h2>
+<pre><code data-trim data-noescape>
+<mark>$mPosts = get_transient('my_posts');
+if($mPosts === false) {
+  $mPosts = new WP_Query(['post_type'=>'post', 'posts_per_page'=>-1]);
+  set_transient('my_posts', $mPosts, DAY_IN_SECONDS);
+}</mark>
+if($mPosts->have_posts()): while($mPosts->have_posts()): $mPosts->the_post();
+  //make it look pretty
+endwhile; endif;
+</code></pre>
+          </section>
+          <section>
+          <h2>Better</h2>
+<pre><code data-trim>
+$mPosts = getMyPosts();
+</code></pre>
+          </section>
+          <section>
+<pre><code data-trim>
+function getMyPosts() {
+  $mPosts = get_transient('my_posts');
+  if($mPosts === false) {
+    $mPosts = refreshPostsTransient();
+  }
+  return $mPosts;
+}
+</code></pre>
+          </section>
+          <section>
+<pre><code data-trim>
+function refreshPostsTransient() {
+  $mPosts = new WP_Query(['post_type' => 'post', 'posts_per_page' =>-1]);
+  set_transient('my_posts', $mPosts, DAY_IN_SECONDS);
+  return $mPosts;
+}
+</code></pre>
+          </section>
+          <section>
+            <h2>I just posted about an event in two hours and the transient doesn't expire for four hours!</h2>
+          </section>
+          <section>
+            <aside class="notes">
+              But we're responsible programmers and we put all of our functionality into a class, right? Right? Right?
+            </aside>
+            <h2>Hook</h2>
+<pre><code data-trim>
+add_action('save_post', 'refreshPostsTransient');
+</code></pre>
+          </section>
+          <section>
+            <h2>Best</h2>
+<pre><code data-trim>
+add_action('save_post', [$this, 'refreshPostsTransient']);
+</code></pre>
+          </section>
+          <section>
+            <h2>A thought</h2>
+            <p>What if my transient takes a really long time to generate?</p>
+            <aside class="notes">
+              We are, of course, talking about optimization here and we want to be scalable, and we don't want that one user each hour or day or whatever waiting forever for this thing to be generated. Why are we doing this during a real user session?
+
+              That's a good question, and it's why these don't scale super well out of the box. We want things to refresh when they expire, but we also want it to refresh before someone is <em>waiting</em> on it, which is how the transient currently functions. It doesn't refresh the transient until after the information is no good. Let's beat it to the punch.
+            </aside>
+          </section>
+          <section>
+            <h2>How About a Cron?</h2>
+            <h3>Here's the pitch</h3>
+<pre><code data-trim>
+http://mysite.com?mytransient=refresh
+</code></pre>
+            <h3>Glove ready</h3>
+<pre><code data-trim>
+add_action('init', [$this, 'maybe_refresh_transient']);
+</code></pre>
+            <h3>Catch</h3>
+<pre><code data-trim>
+public function maybe_refresh_transient() {
+  if('refresh' === $_GET['mytransient']) {
+    $this->refreshPostsTransient();
+  }
+}
+</code></pre>
+            <aside class="notes">Awesome. If we set this cron to run every 50 minutes, it can do all the data processing and reset the transient in the background, without any users waiting on it.</aside>
+          </section>
+        </section>
+        <section>
+          <section><h1>Third-Party APIs</h1></section>
+          <section>
+            <aside class="notes">Our information might be dated, but probably not a big deal</aside>
+<pre><code data-trim>
+public function getResults($platform) {
+  $results = get_transient("social_feeds_results_{$platform}");
+  if(false === $results) {
+    $results = array();
+
+    switch($platform) {
+      case 'twitter' :
+      $results = $this->_getResultsTwitter();
+      break;
+      case 'facebook' :
+      $results = $this->_getResultsFacebook();
+      break;
+    }
+    set_transient("social_feeds_results_{$platform}", base64_encode(maybe_serialize($results)), HOUR_IN_SECONDS);
+  }
+  return maybe_unserialize(base64_decode($results));
+}
+</code></pre>
+<pre><code data-trim>
+$tweets = $socialFeeds->getResults('twitter');
+</code></pre>
+      	  </section>
+        </section>
+        <section>
+          <section>
+            <h1>Get Silly</h1>
+          </section>
+          <section>
+            <h2>Data URI as image src</h2>
+            <pre><code data-trim><img src="data: image/jpeg;base64,/9j...9k="></code></pre>
+          </section>
+          <section>
+<pre><code data-trim data-noescape>
+function fetchLastThousandInstagramPicturesTransient() {
+  $images = <mark>get_transient('thousand_instagram_pictures')</mark>;
+  if($images === false) {
+    $images = fetchLastThousandInstagramPictures(); //an array of URLs
+    $images = dataUriEncodeImages($images);
+    <mark>set_transient('thousand_instagram_pictures', $images, HOUR_IN_SECONDS);</mark>
+  }
+  return $images;
+}
+</code></pre>
+          </section>
+          <section>
+<pre><code data-trim>
+function dataUriEncodeImages($images) {
+  $imagesAsData = [];
+  foreach($images as $image) {
+    $imagesAsData[] = getDataURI($image);
+  }
+  return $imagesAsData;
+}
+</code></pre>
+          </section>
+          <section>
+<pre><code data-trim>
+function getDataURI($image) {
+  return 'data: '.mime_content_type($image).';base64,'.base64_encode(file_get_contents($image));
+}
+</code></pre>
+          </section>
+          <section>
+<pre><code data-trim>
+$images = fetchLastThousandInstagramPicturesTransient();
+foreach($images as $image) {
+  echo '<img src=" '.$image.'">';
+}
+</code></pre>
+            </section>
+          </section>
+          <section>
+            <h2>Resources</h2>
+            <ol>
+              <li><a href="https://davidwalsh.name/demo/data-uri-php.php">David Walsh</a></li>
+              <li><a href="https://codex.wordpress.org/Transients_API">WordPress Codex</a></li>
+              <li><a href="http://lab.hakim.se/reveal-js">Reveal.js</a></li>
+            </ol>
+          </section>
+  		</div>
+
+  	</div>
+
+  	<script src="bower_components/reveal.js/lib/js/head.min.js"></script>
+  	<script src="bower_components/reveal.js/js/reveal.js"></script>
+
+  	<script>
+  		// Full list of configuration options available at:
+  		// https://github.com/hakimel/reveal.js#configuration
+  		Reveal.initialize({
+  			controls: true,
+  			progress: true,
+  			history: true,
+  			center: true,
+  			transition: 'slide', // none/fade/slide/convex/concave/zoom
+  			// Optional reveal.js plugins
+  			dependencies: [
+  				{ src: 'bower_components/reveal.js/lib/js/classList.js', condition: function() { return !document.body.classList; } },
+  				{ src: 'bower_components/reveal.js/plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+  				{ src: 'bower_components/reveal.js/plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+  				{ src: 'bower_components/reveal.js/plugin/highlight/highlight.js', async: true, callback: function() { hljs.initHighlightingOnLoad(); } },
+  				{ src: 'bower_components/reveal.js/plugin/zoom-js/zoom.js', async: true },
+  				{ src: 'bower_components/reveal.js/plugin/notes/notes.js', async: true }
+  			]
+  		});
+  	</script>
+
+	</body>
+</html>
